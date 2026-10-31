@@ -17,14 +17,14 @@ MedGit is an open method plus a small reference implementation. Issues and pull 
 
 ## Tests
 
-Python 3.10+.
+Go 1.22 or newer.
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
-PYTHONPATH=src python examples/sepsis_walkthrough.py
+go test ./...
+go run ./examples/sepsis
 ```
 
-The library has no runtime dependencies. Please keep it that way unless a change cannot be expressed in the standard library, and say why in the pull request.
+The library has no runtime dependencies outside the Go standard library. Please keep it that way unless a change cannot be expressed in the standard library, and say why in the pull request.
 
 ## Actors
 

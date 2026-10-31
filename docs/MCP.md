@@ -9,7 +9,7 @@ Content-Length: <bytes>\r\n
 ```
 
 ```bash
-MEDGIT_REPO=./syn-pat-001 python -m medgit.mcp_server
+MEDGIT_REPO=./syn-pat-001 medgit mcp
 ```
 
 `initialize` answers protocol `2024-11-05` and server name `medgit`. `tools/list` returns the tools below. `tools/call` returns MCP `content` text. Domain errors come back as `isError: true` rather than a JSON-RPC error, so a client can show them as a refused clinical action.

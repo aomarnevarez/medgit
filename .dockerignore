@@ -1,5 +1,3 @@
-**/__pycache__
-**/*.pyc
-.venv
 .git
 data
+/medgit
