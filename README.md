@@ -1,10 +1,8 @@
 # MedGit
 
-MedGit es el puente. El caso vive en HL7 FHIR. Se opera como un log: un episodio es una rama, un hecho es un commit, una interconsulta es un pull request. Un modelo de lenguaje entra por MCP y no reescribe el expediente. Un hospital o una startup lo clona y lo corre en un contenedor.
+MedGit is a git-inspired object log for clinical work. A patient is a repository, an episode is a branch, a fact is a commit, and an interconsultation is a pull request. A language model enters through MCP and does not rewrite the chart. A hospital or a startup clones the repository and runs it in a container.
 
-MedGit is a git-inspired object log for clinical work. A patient is a repository, an episode is a branch, a fact is a commit, and an interconsultation is a pull request.
-
-Version 0.2 is the first version that actually runs. The 0.1 repository was the mapping and the intent. This version is an append-only reference implementation: a Python library, a CLI, a FHIR projection, a small MCP server, and tests. It is deliberately not a wrapper around `git`.
+Version 0.2 is the first version that actually runs. The 0.1 repository was the mapping and the intent. This version is an append-only reference implementation: a Go library, a CLI, a FHIR projection, a small MCP server, and tests. It is deliberately not a wrapper around `git`.
 
 MedGit is a methodology and a reference tool. It is not a medical device, it does not diagnose, and it is not a place to put real patient data.
 
@@ -40,23 +38,22 @@ qSOFA here is a screening rule with a version string. The commit stores the inpu
 
 ## Quick start
 
-No third-party packages. Python 3.10 or newer.
+No third-party modules. Go 1.22 or newer.
 
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -e .
+go build -o medgit ./cmd/medgit
 
-medgit init ./syn-pat-001 \
+./medgit init ./syn-pat-001 \
   --patient-ref syn-pat-001 \
-  --display "Paciente Sintético Uno" \
+  --display "Synthetic Patient One" \
   --actor-id att-ramirez \
-  --actor-display "Dra. Elena Ramírez" \
+  --actor-display "Elena Ramirez, MD" \
   --actor-role attending
 
-medgit -C ./syn-pat-001 episode open \
-  --reason "Ingreso a urgencias" \
+./medgit -C ./syn-pat-001 episode open \
+  --reason "Emergency department admission" \
   --actor-id res-ortega \
-  --actor-display "Dr. Luis Ortega" \
+  --actor-display "Luis Ortega, MD" \
   --actor-role resident
 ```
 
@@ -64,19 +61,19 @@ Every write takes an actor. The CLI trusts that actor. Authentication belongs to
 
 ## Official HL7 case
 
-The demo is not an invented chart. It files the published FHIR R4 **f001** examples — [Pieter van de Heuvel](https://hl7.org/fhir/R4/patient-example-f001-pieter.json), the heart-valve encounter, condition, procedure, glucose observation, and the blood-exam bundle. The JSON is copied without modification from [hl7.org/fhir/R4](https://hl7.org/fhir/R4/). See `src/medgit/data/hl7/NOTICE`. HL7 keeps the copyright. The demo operators (`att-demo`, `res-demo`) are only the people filing the log.
+The demo is not an invented chart. It files the published FHIR R4 **f001** examples — [Pieter van de Heuvel](https://hl7.org/fhir/R4/patient-example-f001-pieter.json), the heart-valve encounter, condition, procedure, glucose observation, and the blood-exam bundle. The JSON is copied without modification from [hl7.org/fhir/R4](https://hl7.org/fhir/R4/). See `internal/hl7/data/NOTICE`. HL7 keeps the copyright. The demo operators (`att-demo`, `res-demo`) are only the people filing the log.
 
 ```bash
-PYTHONPATH=src python -m medgit -C ./f001 demo
-PYTHONPATH=src python -m medgit -C ./f001 verify
-PYTHONPATH=src python -m medgit -C ./f001 export-fhir --json
+go run ./cmd/medgit -C ./f001 demo
+go run ./cmd/medgit -C ./f001 verify
+go run ./cmd/medgit -C ./f001 export-fhir --json
 ```
 
 `6.3 mmol/L` is stored as the string `"6.3"` and projected back to a JSON number on export. The original object is never edited.
 
 ## Container
 
-One process, no database, no extra packages. `PORT` and `MEDGIT_DATA` are the only configuration. On boot it builds the f001 record if it is not already there.
+One process, no database, no extra modules. `PORT` and `MEDGIT_DATA` are the only configuration. On boot it builds the f001 record if it is not already there. The image command is `medgit serve`.
 
 ```bash
 docker build -t medgit .
@@ -106,8 +103,8 @@ There is no authentication in the container. Do not point it at real PHI. Put th
 `medgit_load_demo` builds the f001 record. `medgit_commit_fhir` appends one resource to an open episode. Both require `MEDGIT_ALLOW_WRITE=1`. Neither tool can merge. The model proposes; an attending integrates. Tool list: [docs/MCP.md](docs/MCP.md).
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
-PYTHONPATH=src python examples/sepsis_walkthrough.py
+go test ./...
+go run ./examples/sepsis
 ```
 
 Useful commands: `observe`, `note`, `qsofa`, `consult open|review|refresh|merge`, `log`, `status`, `verify`, `export-fhir`, `show`. `medgit rebase`, `medgit amend`, and `medgit reset` exist so they can refuse.
@@ -131,7 +128,7 @@ FHIR is the vocabulary. MedGit is the lifecycle. A commit carries one or more re
 
 ## MCP
 
-`python -m medgit.mcp_server` speaks MCP over stdio with `Content-Length` framing. `MEDGIT_REPO` selects the record. `medgit_status`, `medgit_log`, `medgit_verify`, and `medgit_export_fhir` are read-only. `medgit_qsofa` also requires `MEDGIT_ALLOW_WRITE=1`. Tool definitions: [docs/MCP.md](docs/MCP.md).
+`medgit mcp` speaks MCP over stdio with `Content-Length` framing. `MEDGIT_REPO` selects the record. `medgit_status`, `medgit_log`, `medgit_verify`, and `medgit_export_fhir` are read-only. `medgit_qsofa` also requires `MEDGIT_ALLOW_WRITE=1`. Tool definitions: [docs/MCP.md](docs/MCP.md).
 
 ## What this repository will not do
 
@@ -143,9 +140,9 @@ It will not store real PHI. The synthetic identifier system is `https://medgit.d
 - [x] Commit object and canonical hash
 - [x] FHIR Bundle projection and Provenance
 - [x] MCP server for read tools plus one guarded write
-- [x] Python reference implementation and tests
+- [x] Go reference implementation and tests
 - [x] Official HL7 FHIR R4 f001 examples as the public demo
-- [x] Container control plane (`python -m medgit.server`, Docker)
+- [x] Container control plane (`medgit serve`, Docker)
 - [x] MCP tools to load the demo and append a FHIR resource, without a merge tool
 - [x] Role rules, stale-approval invalidation, discordant-value notices
 - [ ] Detached signatures (the hash is the signed payload)

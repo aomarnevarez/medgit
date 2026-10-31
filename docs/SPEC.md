@@ -68,4 +68,4 @@ The merge commit has parents `[main, episode_tip]`, type `merge`, and no resourc
 
 ## Clocks in tests
 
-`MedRepo` takes a `clock()` callable that returns a `Z` timestamp. Production uses UTC now. Tests inject a stepping clock so `recorded_at` is deterministic without sleeping.
+`MedRepo` takes a clock function that returns a `Z` timestamp. Production uses UTC now. Tests inject a stepping clock so `recorded_at` is deterministic without sleeping.
