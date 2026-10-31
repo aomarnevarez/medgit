@@ -107,6 +107,7 @@ class MedRepo:
         gender: str = "unknown",
         birth_date: str = "1978-04-12",
         clock: Clock | None = None,
+        resources: list[dict[str, Any]] | None = None,
     ) -> MedRepo:
         if actor.role not in {"attending", "system"}:
             raise PolicyError("only an attending or a provisioning system can init a record")
@@ -131,9 +132,9 @@ class MedRepo:
             message=f"Open longitudinal record for {display}",
             parents=[],
             episode_id=None,
-            resources=[
-                patient_resource(patient_ref, display, gender=gender, birth_date=birth_date)
-            ],
+            resources=resources
+            if resources is not None
+            else [patient_resource(patient_ref, display, gender=gender, birth_date=birth_date)],
             sensitivity="normal",
             corrects=None,
             notices=[],
@@ -156,6 +157,7 @@ class MedRepo:
         reason: str,
         encounter_class: str = "EMER",
         episode_id: str | None = None,
+        resources: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         self._require_human(actor, "open an episode")
         if not reason.strip():
@@ -172,9 +174,9 @@ class MedRepo:
             message=reason,
             parents=[main],
             episode_id=identifier,
-            resources=[
-                encounter_resource(identifier, patient_ref, reason, encounter_class, when)
-            ],
+            resources=resources
+            if resources is not None
+            else [encounter_resource(identifier, patient_ref, reason, encounter_class, when)],
             sensitivity="normal",
             corrects=None,
             notices=[],

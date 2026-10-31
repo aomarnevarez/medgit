@@ -101,6 +101,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verify")
     export = sub.add_parser("export-fhir")
     export.add_argument("--ref", default="main")
+    sub.add_parser("demo", help="build the official HL7 FHIR R4 f001 record into --repo")
+
     show = sub.add_parser("show")
     show.add_argument("digest")
 
@@ -128,6 +130,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> Any:
+    if args.cmd == "demo":
+        from medgit.importhl7 import build_f001_demo
+
+        repo = build_f001_demo(args.repo)
+        report = repo.verify()
+        if not report["ok"]:
+            raise IntegrityError("; ".join(report["errors"]))
+        return {"path": str(repo.root), "patient": repo.config()["display"], "verify": report}
     if args.cmd == "init":
         repo = MedRepo.init(
             args.repo,

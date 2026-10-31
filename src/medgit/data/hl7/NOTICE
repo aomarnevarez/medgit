@@ -1,0 +1,17 @@
+These JSON files are official HL7 FHIR R4 (v4.0.1) examples.
+They were copied without modification from https://hl7.org/fhir/R4/.
+
+Patient, encounter, condition, procedure and observation are the published
+f001 examples (Pieter van de Heuvel, heart valve). The diagnostic report file
+is the published collection Bundle diagnosticreport-example-f001-bloodexam.
+
+© Health Level Seven International. MedGit does not claim authorship.
+License: http://hl7.org/fhir/license.html
+
+Sources:
+- patient-example-f001-pieter.json
+- encounter-example-f001-heart.json
+- condition-example-f001-heart.json
+- procedure-example-f001-heart.json
+- observation-example-f001-glucose.json
+- diagnosticreport-example-f001-bloodexam.json

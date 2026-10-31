@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from medgit.errors import MedGitError
@@ -93,6 +94,29 @@ class Server:
                 altered_mentation=bool(arguments["altered_mentation"]),
             )
             return _tool_text(committed["hash"] + " " + committed["message"])
+        if name == "medgit_load_demo":
+            _require_write()
+            from medgit.importhl7 import build_f001_demo
+
+            if (Path(self.root) / "medgit.json").is_file():
+                raise MedGitError("record already exists; refusing to overwrite it")
+            built = build_f001_demo(self.root)
+            report = built.verify()
+            return _tool_text(json.dumps({"patient": built.config()["display"], "verify": report}, indent=2))
+        if name == "medgit_commit_fhir":
+            _require_write()
+            from medgit.importhl7 import commit_resource
+
+            resource = arguments.get("resource")
+            if not isinstance(resource, dict):
+                raise MedGitError("resource must be a FHIR object")
+            committed = commit_resource(
+                repo,
+                actor=_actor(arguments),
+                episode_id=str(arguments["episode_id"]),
+                resource=resource,
+            )
+            return _tool_text(committed["hash"] + " " + committed["message"])
         raise MedGitError(f"unknown tool {name}")
 
 
@@ -122,6 +146,23 @@ def _tools() -> list[dict[str, Any]]:
                 "actor_role": {"type": "string"},
             },
             ["episode_id", "respiratory_rate", "systolic_bp", "altered_mentation", "actor_id", "actor_display", "actor_role"],
+        ),
+        _tool(
+            "medgit_load_demo",
+            "Build the official HL7 FHIR R4 f001 record in MEDGIT_REPO. Refuses if a record is already there. Requires MEDGIT_ALLOW_WRITE=1.",
+            {},
+        ),
+        _tool(
+            "medgit_commit_fhir",
+            "Append one FHIR resource to an open episode. Requires MEDGIT_ALLOW_WRITE=1. Does not merge.",
+            {
+                "episode_id": {"type": "string"},
+                "resource": {"type": "object"},
+                "actor_id": {"type": "string"},
+                "actor_display": {"type": "string"},
+                "actor_role": {"type": "string"},
+            },
+            ["episode_id", "resource", "actor_id", "actor_display", "actor_role"],
         ),
     ]
 

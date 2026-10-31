@@ -21,6 +21,8 @@ MEDGIT_REPO=./syn-pat-001 python -m medgit.mcp_server
 | `medgit_verify` | Full rehash and link check. Read this before trusting a record an agent did not create. |
 | `medgit_export_fhir` | Collection Bundle of `main`. |
 | `medgit_qsofa` | Writes an `inference` commit. Refused unless `MEDGIT_ALLOW_WRITE=1`. Arguments: `episode_id`, `respiratory_rate`, `systolic_bp`, `altered_mentation`, `actor_id`, `actor_display`, `actor_role`. |
+| `medgit_load_demo` | Builds the official HL7 R4 f001 record into `MEDGIT_REPO`. Refuses if a record is already there. Requires `MEDGIT_ALLOW_WRITE=1`. |
+| `medgit_commit_fhir` | Appends one FHIR resource to an open episode. Requires `MEDGIT_ALLOW_WRITE=1`. Does not merge. |
 
 The server does not check a password. An agent runtime that wants an attending merge has to enforce that outside this process. v0.2 exposes one write tool on purpose: a screening rule with a fixed definition. Opening arbitrary commits from a model is a later decision, and it should not skip the consult.
 

@@ -1,5 +1,7 @@
 # MedGit
 
+MedGit es el puente. El caso vive en HL7 FHIR. Se opera como un log: un episodio es una rama, un hecho es un commit, una interconsulta es un pull request. Un modelo de lenguaje entra por MCP y no reescribe el expediente. Un hospital o una startup lo clona y lo corre en un contenedor.
+
 MedGit is a git-inspired object log for clinical work. A patient is a repository, an episode is a branch, a fact is a commit, and an interconsultation is a pull request.
 
 Version 0.2 is the first version that actually runs. The 0.1 repository was the mapping and the intent. This version is an append-only reference implementation: a Python library, a CLI, a FHIR projection, a small MCP server, and tests. It is deliberately not a wrapper around `git`.
@@ -60,6 +62,49 @@ medgit -C ./syn-pat-001 episode open \
 
 Every write takes an actor. The CLI trusts that actor. Authentication belongs to the system that calls MedGit, not to this repository.
 
+## Official HL7 case
+
+The demo is not an invented chart. It files the published FHIR R4 **f001** examples — [Pieter van de Heuvel](https://hl7.org/fhir/R4/patient-example-f001-pieter.json), the heart-valve encounter, condition, procedure, glucose observation, and the blood-exam bundle. The JSON is copied without modification from [hl7.org/fhir/R4](https://hl7.org/fhir/R4/). See `src/medgit/data/hl7/NOTICE`. HL7 keeps the copyright. The demo operators (`att-demo`, `res-demo`) are only the people filing the log.
+
+```bash
+PYTHONPATH=src python -m medgit -C ./f001 demo
+PYTHONPATH=src python -m medgit -C ./f001 verify
+PYTHONPATH=src python -m medgit -C ./f001 export-fhir --json
+```
+
+`6.3 mmol/L` is stored as the string `"6.3"` and projected back to a JSON number on export. The original object is never edited.
+
+## Container
+
+One process, no database, no extra packages. `PORT` and `MEDGIT_DATA` are the only configuration. On boot it builds the f001 record if it is not already there.
+
+```bash
+docker build -t medgit .
+docker run --rm -p 8080:8080 -v medgit-cases:/data medgit
+curl -s localhost:8080/records/f001/verify
+```
+
+| Method | Path | Effect |
+| --- | --- | --- |
+| GET | `/health` | Process up. |
+| GET | `/records` | Record ids. |
+| GET | `/records/{id}` | Status. |
+| GET | `/records/{id}/log` | Full ancestor log. |
+| GET | `/records/{id}/verify` | Rehash. |
+| GET | `/records/{id}/fhir` | Collection Bundle. |
+| POST | `/records` | Create from a FHIR Patient plus resources. |
+| POST | `/records/{id}/episode` | Open an episode. |
+| POST | `/records/{id}/commit` | Append resources. |
+| POST | `/records/{id}/consult` | Open a consult. |
+| POST | `/records/{id}/review` | Comment, approve, or request changes. |
+| POST | `/records/{id}/merge` | Attending merge. |
+
+There is no authentication in the container. Do not point it at real PHI. Put the hospital's identity layer in front, and keep real charts off a public volume.
+
+## MCP for an editor model
+
+`medgit_load_demo` builds the f001 record. `medgit_commit_fhir` appends one resource to an open episode. Both require `MEDGIT_ALLOW_WRITE=1`. Neither tool can merge. The model proposes; an attending integrates. Tool list: [docs/MCP.md](docs/MCP.md).
+
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -v
 PYTHONPATH=src python examples/sepsis_walkthrough.py
@@ -99,7 +144,9 @@ It will not store real PHI. The synthetic identifier system is `https://medgit.d
 - [x] FHIR Bundle projection and Provenance
 - [x] MCP server for read tools plus one guarded write
 - [x] Python reference implementation and tests
-- [x] Synthetic walkthrough, including a lab correction and a qSOFA consult
+- [x] Official HL7 FHIR R4 f001 examples as the public demo
+- [x] Container control plane (`python -m medgit.server`, Docker)
+- [x] MCP tools to load the demo and append a FHIR resource, without a merge tool
 - [x] Role rules, stale-approval invalidation, discordant-value notices
 - [ ] Detached signatures (the hash is the signed payload)
 - [ ] Encryption-at-rest adapter interface

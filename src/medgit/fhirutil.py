@@ -152,9 +152,7 @@ def risk_assessment(
 def project_resource(resource: dict[str, Any], *, corrected_by: str | None = None) -> dict[str, Any]:
     """Standards-shaped copy. Not an input to the object hash."""
     projected = copy.deepcopy(resource)
-    quantity = projected.get("valueQuantity")
-    if isinstance(quantity, dict) and isinstance(quantity.get("value"), str):
-        quantity["value"] = _as_number(quantity["value"])
+    _restore_quantities(projected)
     if corrected_by:
         if "status" in projected:
             projected["status"] = "entered-in-error"
@@ -197,6 +195,18 @@ def provenance(
             }
         ],
     }
+
+
+def _restore_quantities(node: Any) -> None:
+    if isinstance(node, dict):
+        raw = node.get("value")
+        if isinstance(raw, str) and "unit" in node and _DECIMAL.match(raw):
+            node["value"] = _as_number(raw)
+        for child in node.values():
+            _restore_quantities(child)
+    elif isinstance(node, list):
+        for child in node:
+            _restore_quantities(child)
 
 
 def _as_number(value: str) -> int | float:
