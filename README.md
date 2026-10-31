@@ -1,55 +1,60 @@
 # MedGit
 
-MedGit is a git-inspired object log for clinical work. A patient is a repository, an episode is a branch, a fact is a commit, and an interconsultation is a pull request. A language model enters through MCP and does not rewrite the chart. A hospital or a startup clones the repository and runs it in a container.
+MedGit keeps one patient chart in one folder. You add a fact. A fact that is already stored stays as it was written.
 
-Version 0.2 is the first version that actually runs. The 0.1 repository was the mapping and the intent. This version is an append-only reference implementation: a Go library, a CLI, a FHIR projection, a small MCP server, and tests. It is deliberately not a wrapper around `git`.
+A resident can write a visit. That visit joins the patient's record when a different attending accepts that exact version.
 
-MedGit is a methodology and a reference tool. It is not a medical device, it does not diagnose, and it is not a place to put real patient data.
+The program is written in Go. The name is MedGit, and the program does not call the `git` command. It is a reference implementation for synthetic charts. Real patient data does not belong in it.
 
-## Why it is not Git
+## Words
 
-Git is the right metaphor and the wrong storage engine for a chart.
+| Word in the commands | Meaning |
+| --- | --- |
+| The folder you pass to `init` or `-C` | One patient. |
+| `main` | The accepted chart. |
+| episode | One visit. It stays off `main` until an attending accepts it. |
+| commit | One fact, such as a note or a result. The file is never edited. Its id is a hash. |
+| consult | A request: please accept this visit. |
 
-| Operation | Git | MedGit |
-| --- | --- | --- |
-| Rewrite a fact | `commit --amend` | Forbidden. A `correction` commit points at the original hash. The original stays. |
-| Replay history | `rebase` | Forbidden. A merge is a union. Both values remain. |
-| Move a branch backwards | `reset`, force-push | Forbidden. Refs only advance. |
-| Conflicting lines | A textual conflict | A review notice when the same LOINC code disagrees inside six hours. The attending has to acknowledge it. The values are not collapsed. |
-| Author of a merge | Anyone with push rights | An attending, and not the author of the consult. A later commit drops the approval. |
+## Build
 
-`recorded_at` is the system time and must not move backwards along a parent edge. `authored_at` is the clinical time and may be earlier: late notes are real. Decimal results are stored as strings so `4.2` has one hash, not one hash per floating-point printer. Export to FHIR is a projection: that is where quantity values become JSON numbers, and where a corrected observation is shown as `entered-in-error` without mutating the stored object.
-
-## Map
-
-| Clinical act | Object | Rule in 0.2 |
-| --- | --- | --- |
-| Patient | Repository | One longitudinal `main` ref, rooted at a `patient-init` commit. |
-| Episode of care | Branch | `episode-open` forks from `main`. States: `open`, `in-review`, `merged`, `abandoned`. |
-| Note, order, result | Commit | Content-addressed. A lab system may commit `result`, `feature`, and `inference`, and may correct only its own commits. |
-| Discharge / close | Merge | Two parents: previous `main`, and the episode tip. Encounter status becomes `finished` only in the FHIR view. |
-| Interconsultation | Pull request | Opens against a source tip and a target tip. If either moves, the approval is void. |
-| Resident | `resident` | Writes on open episodes. Cannot approve or merge. |
-| Attending | `attending` | Approves and merges. Cannot approve their own consult. |
-| LIS / PACS / model | `system` | Allow-listed commit types. The reference "model" is the published qSOFA rule `qsofa-ref-1`, not a weight file. |
-| Auditor | `auditor` | Read and `verify` only. |
-
-qSOFA here is a screening rule with a version string. The commit stores the inputs in the narrative and a qualitative band (`low`, `moderate`, `high`). It does not invent a probability of sepsis.
-
-## Quick start
-
-No third-party modules. Go 1.22 or newer.
+You need Go 1.22 or newer. The module has no other libraries.
 
 ```bash
 go build -o medgit ./cmd/medgit
+```
 
+`./medgit` with no arguments prints the command list.
+
+Every write names the person in `--actor-id`, `--actor-display`, and `--actor-role`. MedGit stores that name as given. Checking identity belongs to the program that calls MedGit.
+
+## A synthetic visit
+
+Run the steps in order. When a step prints an id, copy that id into the next step.
+
+`EPISODE` and `CONSULT` in the later commands are those copies. The sample ids `ep_0123456789ab` and `pr_0123456789ab` are only there to show the shape. Yours will differ.
+
+### 1. Create the patient
+
+```bash
 ./medgit init ./syn-pat-001 \
   --patient-ref syn-pat-001 \
   --display "Synthetic Patient One" \
   --actor-id att-ramirez \
   --actor-display "Elena Ramirez, MD" \
   --actor-role attending
+```
 
+```text
+created ./syn-pat-001
+main 30615197d689b1ab03e7ee369f727657cac7025a2feb87cc12c0eb59a7c06b51
+```
+
+`created` is the folder. `main` is the hash of the first fact. The later commands add `-C ./syn-pat-001` so they write in that folder.
+
+### 2. Start a visit
+
+```bash
 ./medgit -C ./syn-pat-001 episode open \
   --reason "Emergency department admission" \
   --actor-id res-ortega \
@@ -57,23 +62,168 @@ go build -o medgit ./cmd/medgit
   --actor-role resident
 ```
 
-Every write takes an actor. The CLI trusts that actor. Authentication belongs to the system that calls MedGit, not to this repository.
+```text
+e6fdb41b918f  episode-open  Emergency department admission
+episode ep_0123456789ab
+```
 
-## Official HL7 case
+The second line is the visit id. Copy it. Below, that copy is `EPISODE`.
 
-The demo is not an invented chart. It files the published FHIR R4 **f001** examples — [Pieter van de Heuvel](https://hl7.org/fhir/R4/patient-example-f001-pieter.json), the heart-valve encounter, condition, procedure, glucose observation, and the blood-exam bundle. The JSON is copied without modification from [hl7.org/fhir/R4](https://hl7.org/fhir/R4/). See `internal/hl7/data/NOTICE`. HL7 keeps the copyright. The demo operators (`att-demo`, `res-demo`) are only the people filing the log.
+### 3. Add a note
+
+The note is saved on the visit. It is not on `main` yet.
+
+```bash
+./medgit -C ./syn-pat-001 note \
+  --episode EPISODE \
+  --text "Abdominal pain and dyspnea." \
+  --actor-id res-ortega \
+  --actor-display "Luis Ortega, MD" \
+  --actor-role resident
+```
+
+```text
+5d13fcc836ab  note  Abdominal pain and dyspnea.
+```
+
+### 4. Ask an attending to accept the visit
+
+```bash
+./medgit -C ./syn-pat-001 consult open \
+  --episode EPISODE \
+  --title "Admit and integrate" \
+  --actor-id res-ortega \
+  --actor-display "Luis Ortega, MD" \
+  --actor-role resident
+```
+
+```text
+2e617398821f  pull  Admit and integrate
+consult pr_0123456789ab
+```
+
+The second line is the request id. Copy it. Below, that copy is `CONSULT`.
+
+### 5. Accept the visit
+
+Elena can accept this request because she did not open it. A resident cannot approve or merge. The attending who opened a request cannot approve that same request.
+
+```bash
+./medgit -C ./syn-pat-001 consult review CONSULT \
+  --decision approve \
+  --comment "Agreed, integrate." \
+  --actor-id att-ramirez \
+  --actor-display "Elena Ramirez, MD" \
+  --actor-role attending
+
+./medgit -C ./syn-pat-001 consult merge CONSULT \
+  --actor-id att-ramirez \
+  --actor-display "Elena Ramirez, MD" \
+  --actor-role attending
+```
+
+Review prints the consult id again. Merge prints one line whose type is `merge`.
+
+### 6. Read the chart
+
+```bash
+./medgit -C ./syn-pat-001 status
+./medgit -C ./syn-pat-001 log --all
+./medgit -C ./syn-pat-001 verify
+```
+
+`status`:
+
+```text
+Synthetic Patient One  [syn-pat-001]
+main <hash of main>
+episode EPISODE  merged  <hash of the note>
+consult CONSULT  merged  Admit and integrate
+```
+
+`merged` means the visit is now part of the accepted chart.
+
+`log` with no extra flag follows one parent of each fact. After a merge, that is the merge line and the line that created the patient. The note sits on the other parent, so use `log --all`. Newest line first:
+
+```text
+<hash>  merge            attending  <time>  Merge CONSULT: Admit and integrate
+<hash>  note             resident   <time>  Abdominal pain and dyspnea.
+<hash>  episode-open     resident   <time>  Emergency department admission
+<hash>  patient-init     attending  <time>  Open longitudinal record for Synthetic Patient One
+```
+
+`verify` rehashes every file and checks the links. After the steps above:
+
+```text
+ok  objects=7  refs=3
+```
+
+Add `--json` to any command when you want the stored object instead of these lines.
+
+The rest of this page is reference.
+
+## Rules
+
+1. A correction is a new fact that names the hash of the old fact. A FHIR export labels the old observation `entered-in-error`. The stored original stays as it was.
+2. An approval matches one version of the visit and one version of `main`. Another fact on the visit clears that approval. Run `consult refresh`, then review the consult again.
+3. `recorded_at` is when MedGit stored the fact. It cannot move earlier along a parent link. `authored_at` is when the clinician says the event happened, and that time can be earlier.
+4. `./medgit -C ./syn-pat-001 rebase` prints `refused` and exits 2. `amend` and `reset` do the same.
+
+Two results for the same test, with different values, inside six hours, both stay. Merge then requires `--acknowledge-conflicts`.
+
+A decimal such as 4.2 is stored as the string `"4.2"`. The hash then does not depend on how a language prints floating-point numbers. `export-fhir` is where that string becomes a JSON number.
+
+## Who can do what
+
+| Role | Allowed | Stopped |
+| --- | --- | --- |
+| Resident | Write on an open visit. Open a consult. | Approve or merge. |
+| Attending | Approve someone else's consult. Merge it into `main`. | Approve a consult they opened. |
+| System, such as a lab or a rule | Write an allow-listed result. Correct only its own facts. | Open a visit, approve, or merge. |
+| Auditor | Read, and run `verify`. | Write. |
+
+## Files
+
+One directory per patient. A new review is a new file, and its `previous` field points at the old consult.
+
+```text
+syn-pat-001/
+  medgit.json                     patient id and display name
+  objects/ab/<rest of the sha256> one JSON object; the hash is the id
+  refs/main                       hash of the accepted chart
+  refs/episodes/<episode id>      hash of that visit
+  refs/pulls/<consult id>         hash of the latest consult object
+```
+
+Field definitions are in [docs/SPEC.md](docs/SPEC.md) and [schemas/commit.schema.json](schemas/commit.schema.json). Why the chart is a log is in [docs/WHY.md](docs/WHY.md).
+
+## A published example
 
 ```bash
 go run ./cmd/medgit -C ./f001 demo
-go run ./cmd/medgit -C ./f001 verify
-go run ./cmd/medgit -C ./f001 export-fhir --json
 ```
 
-`6.3 mmol/L` is stored as the string `"6.3"` and projected back to a JSON number on export. The original object is never edited.
+```text
+created ./f001
+patient Pieter van de Heuvel
+ok  objects=11  refs=3
+```
 
-## Container
+`demo` files the official HL7 FHIR R4 example: the heart-valve encounter, condition, procedure, glucose observation, and blood-exam bundle. The JSON is copied unchanged from [hl7.org/fhir/R4](https://hl7.org/fhir/R4/). HL7 holds the copyright. See `internal/hl7/data/NOTICE`. The operators `att-demo` and `res-demo` file the log. The clinicians in the example are the authors of the FHIR resources.
 
-One process, no database, no extra modules. `PORT` and `MEDGIT_DATA` are the only configuration. On boot it builds the f001 record if it is not already there. The image command is `medgit serve`.
+The glucose value 6.3 mmol/L is stored as the string `"6.3"`.
+
+## FHIR export
+
+```bash
+./medgit -C ./syn-pat-001 export-fhir --json
+```
+
+This is a FHIR view for other systems. The folder on disk remains the chart. See [docs/FHIR.md](docs/FHIR.md).
+
+## HTTP
+
+The server is one process, with no database and no login. Put an identity check in front of it. Real patients do not belong on this server.
 
 ```bash
 docker build -t medgit .
@@ -81,78 +231,70 @@ docker run --rm -p 8080:8080 -v medgit-cases:/data medgit
 curl -s localhost:8080/records/f001/verify
 ```
 
-| Method | Path | Effect |
-| --- | --- | --- |
-| GET | `/health` | Process up. |
-| GET | `/records` | Record ids. |
-| GET | `/records/{id}` | Status. |
-| GET | `/records/{id}/log` | Full ancestor log. |
-| GET | `/records/{id}/verify` | Rehash. |
-| GET | `/records/{id}/fhir` | Collection Bundle. |
-| POST | `/records` | Create from a FHIR Patient plus resources. |
-| POST | `/records/{id}/episode` | Open an episode. |
-| POST | `/records/{id}/commit` | Append resources. |
-| POST | `/records/{id}/consult` | Open a consult. |
-| POST | `/records/{id}/review` | Comment, approve, or request changes. |
-| POST | `/records/{id}/merge` | Attending merge. |
+On startup the server builds the Pieter van de Heuvel record when that folder is missing. `PORT` defaults to `8080`. `MEDGIT_DATA` is the directory of records, and in the image that path is `/data`.
 
-There is no authentication in the container. Do not point it at real PHI. Put the hospital's identity layer in front, and keep real charts off a public volume.
+| Request | Result |
+| --- | --- |
+| `GET /health` | The process is up. |
+| `GET /records` | Record ids. |
+| `GET /records/{id}` | Patient, visits, consults. |
+| `GET /records/{id}/log` | History. |
+| `GET /records/{id}/verify` | Rehash and link check. |
+| `GET /records/{id}/fhir` | FHIR Bundle. |
+| `POST /records` | Create a record from a FHIR Patient. |
+| `POST /records/{id}/episode` | Open a visit. |
+| `POST /records/{id}/commit` | Append resources. |
+| `POST /records/{id}/consult` | Open a consult. |
+| `POST /records/{id}/review` | Comment, approve, or request changes. |
+| `POST /records/{id}/merge` | Attending merge. |
 
-## MCP for an editor model
+## MCP
 
-`medgit_load_demo` builds the f001 record. `medgit_commit_fhir` appends one resource to an open episode. Both require `MEDGIT_ALLOW_WRITE=1`. Neither tool can merge. The model proposes; an attending integrates. Tool list: [docs/MCP.md](docs/MCP.md).
+`medgit mcp` speaks [MCP](docs/MCP.md) on standard input and output, so an editor model can read one record. Set `MEDGIT_REPO` to the patient folder.
+
+Status, log, verify, and FHIR export are available. Writing stays off unless `MEDGIT_ALLOW_WRITE=1`. The server has no merge tool. The model can propose a fact, and an attending still accepts it.
+
+```bash
+MEDGIT_REPO=./syn-pat-001 ./medgit mcp
+```
+
+## Other commands
+
+| Command | What it does |
+| --- | --- |
+| `observe` | Add a numeric result, such as a blood pressure. |
+| `qsofa` | Add a qSOFA screening result. A system actor or an attending writes it. The band is `low`, `moderate`, or `high`. The rule id is `qsofa-ref-1`. The stored sentence ends with "Screening rule only — not a diagnosis of sepsis." |
+| `consult refresh` | Point the consult at the new tips after another fact, and clear the old approval. |
+| `abandon` | Close a visit without merging it. Attending only. |
+| `show HASH` | Print one stored object. |
+| `log --all` | Include facts off the first-parent line. This is how the visit shows up after a merge. |
+| `amend`, `rebase`, `reset` | Print `refused` and exit 2. |
+
+`go run ./examples/sepsis` walks a longer synthetic emergency visit: vitals, a lab value with a later correction, and a qSOFA result.
+
+## Limits
+
+Synthetic identifiers use the system `https://medgit.dev/synthetic`.
+
+The files are plain JSON. `verify` reports a file whose bytes no longer match its hash. Someone who can rewrite the directory and recompute every hash is outside what `verify` can catch. This version has no signatures. The threat model is in [SECURITY.md](SECURITY.md).
+
+## Tests
 
 ```bash
 go test ./...
 go run ./examples/sepsis
 ```
 
-Useful commands: `observe`, `note`, `qsofa`, `consult open|review|refresh|merge`, `log`, `status`, `verify`, `export-fhir`, `show`. `medgit rebase`, `medgit amend`, and `medgit reset` exist so they can refuse.
+## Not in this version
 
-## Layout of a record
-
-```text
-syn-pat-001/
-  medgit.json
-  objects/ab/<sha256 rest>     # canonical JSON, hash is the address
-  refs/main
-  refs/episodes/<episode_id>
-  refs/pulls/<pr_id>
-```
-
-Objects are never updated in place. A review is a new pull object whose `previous` field points at the prior one.
-
-## FHIR
-
-FHIR is the vocabulary. MedGit is the lifecycle. A commit carries one or more resources. `medgit export-fhir` walks every ancestor of `main` and emits a collection Bundle plus a Provenance resource per commit (`agent`, `recorded`, activity code, and the commit hash as `entity`). The mapping and the decimal-string rule are in [docs/FHIR.md](docs/FHIR.md). The object shape is [docs/SPEC.md](docs/SPEC.md) and [schemas/commit.schema.json](schemas/commit.schema.json).
-
-## MCP
-
-`medgit mcp` speaks MCP over stdio with `Content-Length` framing. `MEDGIT_REPO` selects the record. `medgit_status`, `medgit_log`, `medgit_verify`, and `medgit_export_fhir` are read-only. `medgit_qsofa` also requires `MEDGIT_ALLOW_WRITE=1`. Tool definitions: [docs/MCP.md](docs/MCP.md).
-
-## What this repository will not do
-
-It will not store real PHI. The synthetic identifier system is `https://medgit.dev/synthetic`. It will not encrypt the object directory: encryption is a storage adapter for the host (device keystore, KMS), and pretending otherwise would be a false control. It will not sign commits yet. `verify` detects tampering after the fact; it does not stop a privileged process from rewriting bytes. Threat model: [SECURITY.md](SECURITY.md).
-
-## Roadmap
-
-- [x] CLI
-- [x] Commit object and canonical hash
-- [x] FHIR Bundle projection and Provenance
-- [x] MCP server for read tools plus one guarded write
-- [x] Go reference implementation and tests
-- [x] Official HL7 FHIR R4 f001 examples as the public demo
-- [x] Container control plane (`medgit serve`, Docker)
-- [x] MCP tools to load the demo and append a FHIR resource, without a merge tool
-- [x] Role rules, stale-approval invalidation, discordant-value notices
-- [ ] Detached signatures (the hash is the signed payload)
-- [ ] Encryption-at-rest adapter interface
-- [ ] Multi-patient index that never embeds one record inside another
-- [ ] LOINC/UCUM validation beyond the structural check
+- Signatures over the same bytes that already have a hash
+- Encryption of those same bytes
+- An index of many patients, without putting one record inside another
+- A check that a lab code and a unit are a real LOINC and UCUM pair, beyond "the value is a decimal string"
 
 ## Contributing
 
-Clinical reviewers, implementers, and people who will argue with the merge rule are all useful. See [CONTRIBUTING.md](CONTRIBUTING.md). Please do not file a feature request for rebase.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

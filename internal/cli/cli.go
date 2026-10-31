@@ -100,7 +100,7 @@ func dispatch(cmd string, args []string, path string, explicitRepo bool, stdout,
 		}
 		return map[string]any{"path": record.Root(), "patient": config["display"], "verify": report}, nil
 	case "init":
-		return cmdInit(path, args)
+		return cmdInit(path, args, explicitRepo)
 	case "amend", "rebase", "reset":
 		record := repo.Open(path)
 		switch cmd {
@@ -147,15 +147,24 @@ func dispatch(cmd string, args []string, path string, explicitRepo bool, stdout,
 	}
 }
 
-func cmdInit(path string, args []string) (any, error) {
+func cmdInit(path string, args []string, explicitRepo bool) (any, error) {
 	fs := newFlag("init")
 	patientRef := fs.String("patient-ref", "", "patient identifier")
 	display := fs.String("display", "", "patient display name")
 	gender := fs.String("gender", "unknown", "administrative gender")
 	birthDate := fs.String("birth-date", "1978-04-12", "birth date")
 	id, actorDisplay, role := actorFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args); err != nil {
+		return nil, err
+	}
+	if fs.NArg() > 1 {
+		return nil, errUsage{mederr.Errorf("init takes at most one directory")}
+	}
+	if fs.NArg() == 1 {
+		if explicitRepo && path != fs.Arg(0) {
+			return nil, errUsage{mederr.Errorf("init was given two directories, %s and %s", path, fs.Arg(0))}
+		}
+		path = fs.Arg(0)
 	}
 	actor, err := requireActor(*id, *actorDisplay, *role)
 	if err != nil {
@@ -183,8 +192,8 @@ func cmdEpisode(path string, args []string) (any, error) {
 	reason := fs.String("reason", "", "clinical reason")
 	class := fs.String("class", "EMER", "encounter class")
 	id, display, role := actorFlags(fs)
-	if err := fs.Parse(args[1:]); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args[1:]); err != nil {
+		return nil, err
 	}
 	actor, err := requireActor(*id, *display, *role)
 	if err != nil {
@@ -205,8 +214,8 @@ func cmdCommit(path string, args []string) (any, error) {
 	sensitivity := fs.String("sensitivity", "normal", "normal or restricted")
 	corrects := fs.String("corrects", "", "hash of the commit this correction replaces")
 	id, display, role := actorFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args); err != nil {
+		return nil, err
 	}
 	actor, err := requireActor(*id, *display, *role)
 	if err != nil {
@@ -240,8 +249,8 @@ func cmdNote(path string, args []string) (any, error) {
 	episode := fs.String("episode", "", "episode id")
 	text := fs.String("text", "", "note text")
 	id, display, role := actorFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args); err != nil {
+		return nil, err
 	}
 	actor, err := requireActor(*id, *display, *role)
 	if err != nil {
@@ -263,8 +272,8 @@ func cmdObserve(path string, args []string) (any, error) {
 	ucum := fs.String("ucum", "", "UCUM code")
 	message := fs.String("message", "", "commit message")
 	id, display, role := actorFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args); err != nil {
+		return nil, err
 	}
 	actor, err := requireActor(*id, *display, *role)
 	if err != nil {
@@ -283,8 +292,8 @@ func cmdQSOFA(path string, args []string) (any, error) {
 	sbp := fs.Int("sbp", 0, "systolic blood pressure")
 	altered := fs.Bool("altered", false, "altered mentation")
 	id, display, role := actorFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args); err != nil {
+		return nil, err
 	}
 	actor, err := requireActor(*id, *display, *role)
 	if err != nil {
@@ -317,8 +326,8 @@ func cmdConsult(path string, args []string) (any, error) {
 		title := fs.String("title", "", "consult title")
 		body := fs.String("body", "", "consult body")
 		id, display, role := actorFlags(fs)
-		if err := fs.Parse(args[1:]); err != nil {
-			return nil, errUsage{err}
+		if err := parseArgs(fs, args[1:]); err != nil {
+			return nil, err
 		}
 		actor, err := requireActor(*id, *display, *role)
 		if err != nil {
@@ -333,8 +342,8 @@ func cmdConsult(path string, args []string) (any, error) {
 		decision := fs.String("decision", "", "approve, request-changes, or comment")
 		comment := fs.String("comment", "", "review comment")
 		id, display, role := actorFlags(fs)
-		if err := fs.Parse(args[1:]); err != nil {
-			return nil, errUsage{err}
+		if err := parseArgs(fs, args[1:]); err != nil {
+			return nil, err
 		}
 		if fs.NArg() != 1 || *decision == "" {
 			return nil, errUsage{mederr.Errorf("consult review requires a consult id and --decision")}
@@ -347,8 +356,8 @@ func cmdConsult(path string, args []string) (any, error) {
 	case "refresh":
 		fs := newFlag("consult refresh")
 		id, display, role := actorFlags(fs)
-		if err := fs.Parse(args[1:]); err != nil {
-			return nil, errUsage{err}
+		if err := parseArgs(fs, args[1:]); err != nil {
+			return nil, err
 		}
 		if fs.NArg() != 1 {
 			return nil, errUsage{mederr.Errorf("consult refresh requires a consult id")}
@@ -362,8 +371,8 @@ func cmdConsult(path string, args []string) (any, error) {
 		fs := newFlag("consult merge")
 		acknowledge := fs.Bool("acknowledge-conflicts", false, "acknowledge discordant observations")
 		id, display, role := actorFlags(fs)
-		if err := fs.Parse(args[1:]); err != nil {
-			return nil, errUsage{err}
+		if err := parseArgs(fs, args[1:]); err != nil {
+			return nil, err
 		}
 		if fs.NArg() != 1 {
 			return nil, errUsage{mederr.Errorf("consult merge requires a consult id")}
@@ -383,8 +392,8 @@ func cmdAbandon(path string, args []string) (any, error) {
 	episode := fs.String("episode", "", "episode id")
 	reason := fs.String("reason", "", "why the episode is abandoned")
 	id, display, role := actorFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args); err != nil {
+		return nil, err
 	}
 	actor, err := requireActor(*id, *display, *role)
 	if err != nil {
@@ -400,8 +409,8 @@ func cmdLog(path string, args []string) (any, error) {
 	fs := newFlag("log")
 	ref := fs.String("ref", "main", "ref name")
 	all := fs.Bool("all", false, "follow every parent")
-	if err := fs.Parse(args); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args); err != nil {
+		return nil, err
 	}
 	rows, err := repo.Open(path).Log(*ref, *all)
 	if err != nil {
@@ -426,8 +435,8 @@ func cmdLog(path string, args []string) (any, error) {
 func cmdExport(path string, args []string) (any, error) {
 	fs := newFlag("export-fhir")
 	ref := fs.String("ref", "main", "ref name")
-	if err := fs.Parse(args); err != nil {
-		return nil, errUsage{err}
+	if err := parseArgs(fs, args); err != nil {
+		return nil, err
 	}
 	return repo.Open(path).ExportFHIR(*ref)
 }
@@ -495,6 +504,18 @@ func printHuman(w io.Writer, cmd string, payload any) error {
 		report := asMap(payload)
 		fmt.Fprintf(w, "ok  objects=%v  refs=%v\n", report["objects"], report["refs"])
 		return nil
+	case "init":
+		created := asMap(payload)
+		fmt.Fprintf(w, "created %s\n", asString(created["path"]))
+		fmt.Fprintf(w, "main %s\n", asString(created["main"]))
+		return nil
+	case "demo":
+		demo := asMap(payload)
+		fmt.Fprintf(w, "created %s\n", asString(demo["path"]))
+		fmt.Fprintf(w, "patient %s\n", asString(demo["patient"]))
+		report := asMap(demo["verify"])
+		fmt.Fprintf(w, "ok  objects=%v  refs=%v\n", report["objects"], report["refs"])
+		return nil
 	case "status":
 		status := asMap(payload)
 		patient := asMap(status["patient"])
@@ -521,6 +542,16 @@ func printHuman(w io.Writer, cmd string, payload any) error {
 				message = asString(object["title"])
 			}
 			fmt.Fprintf(w, "%s  %s  %s\n", short(asString(object["hash"]), 12), kind, message)
+			if cmd == "episode" {
+				if id := asString(object["episode_id"]); id != "" {
+					fmt.Fprintf(w, "episode %s\n", id)
+				}
+			}
+			if cmd == "consult" && kind == "pull" {
+				if id := asString(object["id"]); id != "" {
+					fmt.Fprintf(w, "consult %s\n", id)
+				}
+			}
 			return nil
 		}
 	}
@@ -601,6 +632,29 @@ func newFlag(name string) *flag.FlagSet {
 	return fs
 }
 
+// parseArgs accepts flags before or after positional arguments.
+// The standard flag parser stops at the first positional, which hides every
+// flag written after an id in the examples.
+func parseArgs(fs *flag.FlagSet, args []string) error {
+	var positionals []string
+	rest := append([]string(nil), args...)
+	for len(rest) > 0 {
+		if err := fs.Parse(rest); err != nil {
+			return errUsage{err}
+		}
+		left := append([]string(nil), fs.Args()...)
+		if len(left) == 0 {
+			break
+		}
+		positionals = append(positionals, left[0])
+		rest = left[1:]
+	}
+	if err := fs.Parse(positionals); err != nil {
+		return errUsage{err}
+	}
+	return nil
+}
+
 type errUsage struct{ error }
 
 func (e errUsage) Error() string {
@@ -666,23 +720,23 @@ func asSlice(v any) []any {
 
 const usageText = `medgit [-C path] [--json] <command>
 
-  init            create a longitudinal record
-  episode open    open an episode
-  commit          append a fact to an open episode
-  note            append a progress note
-  observe         append a quantity observation
-  qsofa           append a qSOFA screening result
-  consult         open, review, refresh, or merge a consult
-  abandon         abandon an episode
+  init [dir]      create a patient record
+  episode open    start a visit
+  commit          add a fact to an open visit
+  note            add a progress note
+  observe         add a numeric result
+  qsofa           add a qSOFA screening result
+  consult         open, review, refresh, or merge a request to accept a visit
+  abandon         close a visit without accepting it
   log             show history
-  status          show the patient, episodes, and consults
-  verify          rehash the record
-  export-fhir     project a FHIR collection Bundle
-  demo            build the official HL7 FHIR R4 f001 record
-  show            show one object
-  serve           HTTP control plane
-  mcp             MCP server on stdio
-  amend           refused: history is append-only
-  rebase          refused: history is append-only
-  reset           refused: refs only move forward
+  status          show the patient, visits, and requests
+  verify          check that every file still matches its hash
+  export-fhir     write a FHIR view of the record
+  demo            file the official HL7 FHIR R4 f001 example
+  show            print one stored object
+  serve           start the HTTP server
+  mcp             start the MCP server
+  amend           refused
+  rebase          refused
+  reset           refused
 `
