@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "medgit"
+version = "0.2.0"
+description = "Append-only, git-inspired object log for clinical work"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Andres Omar Nevarez Prieto" }]
+keywords = ["fhir", "healthcare", "audit", "provenance"]
+
+[project.urls]
+Homepage = "https://github.com/aomarnevarez/medgit"
+
+[project.scripts]
+medgit = "medgit.cli:main"
+medgit-mcp = "medgit.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,138 +1,115 @@
-# MedGit – Git-Inspired Workflow Framework for Digital Health
+# MedGit
 
-**MedGit** is an open-source methodology for modeling and managing healthcare workflows using Git-style version control concepts.
-It bridges the gap between clinical processes and software development practices, enabling developers and healthcare professionals
-to collaborate using a familiar, structured, and auditable model.
+MedGit is a git-inspired object log for clinical work. A patient is a repository, an episode is a branch, a fact is a commit, and an interconsultation is a pull request.
 
-------------------------------------------------------------
-VISION
-------------------------------------------------------------
-Healthcare software is traditionally built by translating clinical concepts into technical specifications for developers.
-This process can be slow, lossy, and difficult to maintain.
-MedGit flips the paradigm: instead of forcing developers to adapt to healthcare’s unstructured workflows, we model those workflows
-using Git-like structures that developers already master, and map them directly to clinical processes.
+Version 0.2 is the first version that actually runs. The 0.1 repository was the mapping and the intent. This version is an append-only reference implementation: a Python library, a CLI, a FHIR projection, a small MCP server, and tests. It is deliberately not a wrapper around `git`.
 
-This approach aims to:
-- Accelerate delivery of healthcare software features.
-- Improve traceability and auditability of clinical data.
-- Enable seamless integration with standards like FHIR, HL7, LOINC, DICOM.
-- Provide a foundation for machine learning and AI orchestration through structured, versioned data.
+MedGit is a methodology and a reference tool. It is not a medical device, it does not diagnose, and it is not a place to put real patient data.
 
-------------------------------------------------------------
-POTENTIAL BENEFITS FOR HEALTHCARE
-------------------------------------------------------------
-- **Faster feature delivery** – Shortens the cycle from concept to clinical deployment by aligning with developer-native workflows.
-- **Enhanced collaboration** – Allows clinicians, developers, and AI agents to work asynchronously with clear version history.
-- **Data integrity and auditability** – Every change is tracked, timestamped, and attributed to a specific author or system.
-- **Improved patient safety** – Staging environments allow safe experimentation and review before production merge.
-- **Interoperability by design** – Built to work seamlessly with FHIR, HL7, DICOM, and other healthcare standards.
-- **AI/ML readiness** – Structured, versioned data simplifies training, validation, and monitoring of predictive models.
-- **Compliance support** – Native mapping to `Provenance` and `AuditEvent` resources in FHIR for regulatory alignment.
-- **Scalability** – From single clinics to nationwide health networks, the methodology adapts to different sizes and complexities.
+## Why it is not Git
 
-------------------------------------------------------------
-CORE CONCEPTS
-------------------------------------------------------------
-Healthcare Concept            | Git Concept     | Description
------------------------------|-----------------|---------------------------------------------------------------
-Patient                      | Repository      | Contains the complete, versioned medical history.
-Clinical Episode             | Branch          | Isolated workspace for a single event of care (ER, inpatient, consult).
-Medical Note/Order/Result    | Commit          | A change in the patient’s record with author, timestamp, and description.
-Discharge/Episode Closure    | Merge           | Integrates branch changes into the patient’s main history.
-Interconsultation/Referral   | Pull Request    | A request for review and integration from another clinician.
-Resident/Trainee             | Contributor     | Proposes changes in staging for review before production merge.
-Attending Physician          | Maintainer      | Approves, merges, and publishes changes.
-Lab/Imaging System           | Automated Bot   | Systems that push structured results automatically as commits.
-Clinical Guidelines          | Templates       | Base files cloned into new episodes to standardize care.
+Git is the right metaphor and the wrong storage engine for a chart.
 
-------------------------------------------------------------
-RELATIONSHIP WITH FHIR
-------------------------------------------------------------
-FHIR defines the structure and vocabulary of healthcare data (e.g., Patient, Encounter, Observation).
-MedGit defines the lifecycle and version control for that data.
+| Operation | Git | MedGit |
+| --- | --- | --- |
+| Rewrite a fact | `commit --amend` | Forbidden. A `correction` commit points at the original hash. The original stays. |
+| Replay history | `rebase` | Forbidden. A merge is a union. Both values remain. |
+| Move a branch backwards | `reset`, force-push | Forbidden. Refs only advance. |
+| Conflicting lines | A textual conflict | A review notice when the same LOINC code disagrees inside six hours. The attending has to acknowledge it. The values are not collapsed. |
+| Author of a merge | Anyone with push rights | An attending, and not the author of the consult. A later commit drops the approval. |
 
-- A MedGit commit may contain a FHIR Bundle with one or more resources.
-- Branches correspond to Encounter resources.
-- Automated commits can be triggered by LIS, PACS, or CPOE systems.
-- Audit logs map to Provenance or AuditEvent in FHIR.
+`recorded_at` is the system time and must not move backwards along a parent edge. `authored_at` is the clinical time and may be earlier: late notes are real. Decimal results are stored as strings so `4.2` has one hash, not one hash per floating-point printer. Export to FHIR is a projection: that is where quantity values become JSON numbers, and where a corrected observation is shown as `entered-in-error` without mutating the stored object.
 
-------------------------------------------------------------
-MACHINE LEARNING & MCP INTEGRATION
-------------------------------------------------------------
-MedGit is designed to work with Model Context Protocol (MCP) servers and MLOps pipelines.
+## Map
 
-Possible MCP modules:
-- mcp-fhir: read/write FHIR resources to/from MedGit branches.
-- mcp-feature-store: compute and store ML features as commits.
-- mcp-inference: run ML models and commit predictions with explanations.
-- mcp-model-registry: manage model versions, metrics, and deployment status.
-- mcp-monitoring: track data drift and trigger retraining pull requests.
-- mcp-audit: sign and anchor commits for compliance and non-repudiation.
+| Clinical act | Object | Rule in 0.2 |
+| --- | --- | --- |
+| Patient | Repository | One longitudinal `main` ref, rooted at a `patient-init` commit. |
+| Episode of care | Branch | `episode-open` forks from `main`. States: `open`, `in-review`, `merged`, `abandoned`. |
+| Note, order, result | Commit | Content-addressed. A lab system may commit `result`, `feature`, and `inference`, and may correct only its own commits. |
+| Discharge / close | Merge | Two parents: previous `main`, and the episode tip. Encounter status becomes `finished` only in the FHIR view. |
+| Interconsultation | Pull request | Opens against a source tip and a target tip. If either moves, the approval is void. |
+| Resident | `resident` | Writes on open episodes. Cannot approve or merge. |
+| Attending | `attending` | Approves and merges. Cannot approve their own consult. |
+| LIS / PACS / model | `system` | Allow-listed commit types. The reference "model" is the published qSOFA rule `qsofa-ref-1`, not a weight file. |
+| Auditor | `auditor` | Read and `verify` only. |
 
-Example flow:
-1) Lab results trigger an automated commit.
-2) Feature store computes ML features and commits them.
-3) Inference module predicts risk (e.g., sepsis) and opens a clinical pull request.
-4) Attending physician reviews, merges, or requests changes.
+qSOFA here is a screening rule with a version string. The commit stores the inputs in the narrative and a qualitative band (`low`, `moderate`, `high`). It does not invent a probability of sepsis.
 
-------------------------------------------------------------
-EXAMPLE REPOSITORY STRUCTURE
-------------------------------------------------------------
-/patients/
-  /{patient_id}/
-    README.md
-    episodes/
-      {encounter_id}/
-        commits/
-          2025-08-10T15-12Z_feature-update.json
-          2025-08-10T15-13Z_inference-sepsis_v12.json
-        docs/
-          progress-note_2025-08-10.md
-        pr/
-          PR-784_decision-antibiotic.yaml
+## Quick start
 
-/features/
-  schemas/
-  versions/
+No third-party packages. Python 3.10 or newer.
 
-/models/
-  registry.yaml
-  sepsis-early-warning/
-    v12/
-      model.pkl
-      metrics.json
-      datasheet.md
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -e .
 
-------------------------------------------------------------
-GOALS
-------------------------------------------------------------
-- Provide clear mappings between healthcare events and Git operations.
-- Maintain full traceability of data changes for compliance and audit.
-- Enable asynchronous collaboration between clinicians and systems.
-- Allow safe experimentation in staging before merging to production.
-- Integrate seamlessly with FHIR and existing health IT standards.
+medgit init ./syn-pat-001 \
+  --patient-ref syn-pat-001 \
+  --display "Paciente Sintético Uno" \
+  --actor-id att-ramirez \
+  --actor-display "Dra. Elena Ramírez" \
+  --actor-role attending
 
-------------------------------------------------------------
-ROADMAP
-------------------------------------------------------------
-- [ ] Initial CLI prototype for MedGit commands.
-- [ ] FHIR Bundle commit format specification.
-- [ ] MCP server definitions for key workflows.
-- [ ] Reference implementation in Python.
-- [ ] Example dataset with synthetic FHIR resources.
-- [ ] Integration with a model registry and inference pipeline.
+medgit -C ./syn-pat-001 episode open \
+  --reason "Ingreso a urgencias" \
+  --actor-id res-ortega \
+  --actor-display "Dr. Luis Ortega" \
+  --actor-role resident
+```
 
-------------------------------------------------------------
-CONTRIBUTING
-------------------------------------------------------------
-We welcome contributions from:
-- Healthcare professionals – to define workflows and validation rules.
-- Developers – to implement tools, APIs, and automation.
-- Data scientists – to create ML integrations and monitoring tools.
+Every write takes an actor. The CLI trusts that actor. Authentication belongs to the system that calls MedGit, not to this repository.
 
-Please see CONTRIBUTING.md for guidelines.
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+PYTHONPATH=src python examples/sepsis_walkthrough.py
+```
 
-------------------------------------------------------------
-LICENSE
-------------------------------------------------------------
-This project is licensed under the MIT License – see the LICENSE file for details.
+Useful commands: `observe`, `note`, `qsofa`, `consult open|review|refresh|merge`, `log`, `status`, `verify`, `export-fhir`, `show`. `medgit rebase`, `medgit amend`, and `medgit reset` exist so they can refuse.
+
+## Layout of a record
+
+```text
+syn-pat-001/
+  medgit.json
+  objects/ab/<sha256 rest>     # canonical JSON, hash is the address
+  refs/main
+  refs/episodes/<episode_id>
+  refs/pulls/<pr_id>
+```
+
+Objects are never updated in place. A review is a new pull object whose `previous` field points at the prior one.
+
+## FHIR
+
+FHIR is the vocabulary. MedGit is the lifecycle. A commit carries one or more resources. `medgit export-fhir` walks every ancestor of `main` and emits a collection Bundle plus a Provenance resource per commit (`agent`, `recorded`, activity code, and the commit hash as `entity`). The mapping and the decimal-string rule are in [docs/FHIR.md](docs/FHIR.md). The object shape is [docs/SPEC.md](docs/SPEC.md) and [schemas/commit.schema.json](schemas/commit.schema.json).
+
+## MCP
+
+`python -m medgit.mcp_server` speaks MCP over stdio with `Content-Length` framing. `MEDGIT_REPO` selects the record. `medgit_status`, `medgit_log`, `medgit_verify`, and `medgit_export_fhir` are read-only. `medgit_qsofa` also requires `MEDGIT_ALLOW_WRITE=1`. Tool definitions: [docs/MCP.md](docs/MCP.md).
+
+## What this repository will not do
+
+It will not store real PHI. The synthetic identifier system is `https://medgit.dev/synthetic`. It will not encrypt the object directory: encryption is a storage adapter for the host (device keystore, KMS), and pretending otherwise would be a false control. It will not sign commits yet. `verify` detects tampering after the fact; it does not stop a privileged process from rewriting bytes. Threat model: [SECURITY.md](SECURITY.md).
+
+## Roadmap
+
+- [x] CLI
+- [x] Commit object and canonical hash
+- [x] FHIR Bundle projection and Provenance
+- [x] MCP server for read tools plus one guarded write
+- [x] Python reference implementation and tests
+- [x] Synthetic walkthrough, including a lab correction and a qSOFA consult
+- [x] Role rules, stale-approval invalidation, discordant-value notices
+- [ ] Detached signatures (the hash is the signed payload)
+- [ ] Encryption-at-rest adapter interface
+- [ ] Multi-patient index that never embeds one record inside another
+- [ ] LOINC/UCUM validation beyond the structural check
+
+## Contributing
+
+Clinical reviewers, implementers, and people who will argue with the merge rule are all useful. See [CONTRIBUTING.md](CONTRIBUTING.md). Please do not file a feature request for rebase.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
